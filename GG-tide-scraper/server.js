@@ -41,91 +41,324 @@ app.get('/tides', async (req, res) => {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Húsavík Tide Information</title>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Gentle Giants - Information Dashboard</title>
           <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            
             body { 
-              font-family: Arial, sans-serif; 
-              max-width: 1000px; 
-              margin: 50px auto;
-              padding: 20px;
-              background: #f5f5f5;
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              overflow: hidden;
+              height: 100vh;
+              display: flex;
+              flex-direction: column;
             }
-            .container {
-              background: white;
-              padding: 30px;
-              border-radius: 10px;
-              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            }
-            h1 {
-              color: #2c3e50;
-              border-bottom: 3px solid #3498db;
-              padding-bottom: 10px;
-            }
-            .tide-data {
-              margin-top: 20px;
-            }
-            .refresh-btn {
-              display: inline-block;
-              margin-top: 20px;
-              padding: 10px 20px;
-              background: #3498db;
+            
+            /* Title Bar */
+            .title-bar {
+              background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
               color: white;
-              text-decoration: none;
-              border-radius: 5px;
+              padding: 20px 40px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+              flex-shrink: 0;
             }
-            .refresh-btn:hover {
-              background: #2980b9;
+            
+            .company-name {
+              font-size: 2.5em;
+              font-weight: bold;
+              text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+              letter-spacing: 2px;
             }
-            .auto-refresh {
-              color: #27ae60;
-              font-size: 14px;
-              margin-top: 10px;
+            
+            .clock {
+              font-size: 2.5em;
+              font-weight: 300;
+              font-family: 'Courier New', monospace;
+              text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
             }
-            .road-conditions {
-              margin-top: 30px;
-              padding-top: 30px;
-              border-top: 3px solid #3498db;
+            
+            /* Grid Container */
+            .grid-container {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              grid-template-rows: 1fr 1fr;
+              gap: 20px;
+              padding: 20px;
+              flex: 1;
+              min-height: 0;
             }
-            .road-conditions h2 {
+            
+            .grid-item {
+              background: white;
+              border-radius: 15px;
+              padding: 20px;
+              box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+              display: flex;
+              flex-direction: column;
+              overflow: hidden;
+            }
+            
+            .grid-item h2 {
+              color: #1e3c72;
+              font-size: 1.5em;
+              margin-bottom: 15px;
+              padding-bottom: 10px;
+              border-bottom: 3px solid #667eea;
+              flex-shrink: 0;
+            }
+            
+            .grid-item-content {
+              flex: 1;
+              overflow: auto;
+              display: flex;
+              flex-direction: column;
+            }
+            
+            /* Tide Data Styling */
+            .tide-data {
+              flex: 1;
+            }
+            
+            /* Custom styling for scraped tide content */
+            .tide-data h3 {
+              font-size: 1.1em;
               color: #2c3e50;
+              text-align: center;
+              margin-bottom: 15px;
+              font-weight: 600;
             }
-            .road-conditions img {
+            
+            .tide-data .tide-header-today__tide-times--nextrow {
+              display: block;
+              margin-top: 5px;
+            }
+            
+            .tide-data table {
               width: 100%;
-              max-width: 100%;
-              height: auto;
+              border-collapse: separate;
+              border-spacing: 0;
+              margin: 10px 0;
+            }
+            
+            .tide-data table th {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              padding: 12px 8px;
+              text-align: left;
+              font-weight: 600;
+              font-size: 0.95em;
+              border: none;
+            }
+            
+            .tide-data table th:first-child {
+              border-radius: 8px 0 0 0;
+            }
+            
+            .tide-data table th:last-child {
+              border-radius: 0 8px 0 0;
+            }
+            
+            .tide-data table td {
+              padding: 12px 8px;
+              border-bottom: 1px solid #e0e0e0;
+              font-size: 0.95em;
+            }
+            
+            .tide-data table tr:last-child td {
+              border-bottom: none;
+            }
+            
+            .tide-data table tr:nth-child(even) {
+              background-color: #f8f9fa;
+            }
+            
+            .tide-data table tr:hover {
+              background-color: #e8f4f8;
+              transition: background-color 0.2s;
+            }
+            
+            .tide-data table td:first-child {
+              font-weight: 600;
+              color: #1e3c72;
+            }
+            
+            .tide-data table b {
+              color: #2c3e50;
+              font-size: 1.05em;
+            }
+            
+            .tide-day-tides__secondary {
+              color: #7f8c8d;
+              font-size: 0.85em;
+              display: block;
+              margin-top: 2px;
+            }
+            
+            .tide-day-tides__sub-header {
+              display: block;
+              font-size: 0.8em;
+              font-weight: 400;
+              opacity: 0.9;
+            }
+            
+            .tide-day-tides__icon {
+              vertical-align: middle;
+              margin-left: 5px;
+            }
+            
+            .tide-header-today__datum {
+              margin-top: 15px;
+              padding: 10px;
+              background: #e8f4f8;
+              border-radius: 6px;
+              font-size: 0.85em;
+            }
+            
+            .tide-header-today__datum-source {
+              color: #34495e;
+            }
+            
+            .tide-header-today__datum-source b {
+              color: #1e3c72;
+            }
+            
+            .not-in-print {
+              display: block;
+            }
+            
+            /* Road Conditions Image */
+            .road-image {
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
               border-radius: 8px;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            
+            /* Placeholder styling */
+            .placeholder {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: #999;
+              font-size: 1.2em;
+              flex: 1;
+            }
+            
+            /* Auto refresh indicator */
+            .refresh-indicator {
+              position: fixed;
+              bottom: 10px;
+              right: 10px;
+              background: rgba(255,255,255,0.9);
+              padding: 8px 15px;
+              border-radius: 20px;
+              font-size: 0.9em;
+              color: #1e3c72;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            }
+            
+            .refresh-dot {
+              display: inline-block;
+              width: 8px;
+              height: 8px;
+              background: #27ae60;
+              border-radius: 50%;
+              margin-right: 8px;
+              animation: pulse 2s infinite;
+            }
+            
+            @keyframes pulse {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.3; }
             }
           </style>
           <script>
-            // Auto-refresh every 30 seconds
-            setTimeout(() => {
-              location.reload();
-            }, 30000);
+            // Update clock every second
+            function updateClock() {
+              const now = new Date();
+              const hours = String(now.getHours()).padStart(2, '0');
+              const minutes = String(now.getMinutes()).padStart(2, '0');
+              const seconds = String(now.getSeconds()).padStart(2, '0');
+              document.getElementById('clock').textContent = hours + ':' + minutes + ':' + seconds;
+            }
             
-            // Update countdown display
+            // Update countdown
             let seconds = 30;
-            setInterval(() => {
+            function updateCountdown() {
               seconds--;
               if (seconds >= 0) {
                 document.getElementById('countdown').textContent = seconds;
               }
-            }, 1000);
+              if (seconds === 0) {
+                location.reload();
+              }
+            }
+            
+            // Initialize on page load
+            window.addEventListener('DOMContentLoaded', () => {
+              updateClock();
+              setInterval(updateClock, 1000);
+              setInterval(updateCountdown, 1000);
+            });
           </script>
         </head>
         <body>
-          <div class="container">
-            <h1>🌊 Húsavík Tide Forecast</h1>
-            <div class="tide-data">
-              ${tideHeaderToday || '<p>No tide data available</p>'}
+          <!-- Title Bar -->
+          <div class="title-bar">
+            <div class="company-name">🐋 GENTLE GIANTS</div>
+            <div class="clock" id="clock">00:00:00</div>
+          </div>
+          
+          <!-- Grid Container -->
+          <div class="grid-container">
+            <!-- Grid Item 1: Tide Forecast -->
+            <div class="grid-item">
+              <h2>🌊 Húsavík Tide Forecast</h2>
+              <div class="grid-item-content">
+                <div class="tide-data">
+                  ${tideHeaderToday || '<div class="placeholder">No tide data available</div>'}
+                </div>
+              </div>
             </div>
-            <p class="auto-refresh">⏱️ Auto-refreshing in <span id="countdown">30</span> seconds...</p>
-            <a href="/tides" class="refresh-btn">Refresh Now</a>
             
-            <div class="road-conditions">
-              <h2>🚤 Iceland Sea Conditions Today</h2>
-              ${roadImageUrl ? `<img src="${roadImageUrl}" alt="Iceland Road Conditions Today">` : '<p>Road conditions image not available</p>'}
+            <!-- Grid Item 2: Sea Conditions -->
+            <div class="grid-item">
+              <h2>🚤 Iceland Sea Conditions</h2>
+              <div class="grid-item-content">
+                ${roadImageUrl ? `<img src="${roadImageUrl}" alt="Iceland Sea Conditions" class="road-image">` : '<div class="placeholder">Sea conditions image not available</div>'}
+              </div>
             </div>
+            
+            <!-- Grid Item 3: Placeholder -->
+            <div class="grid-item">
+              <h2>📊 Additional Info</h2>
+              <div class="grid-item-content">
+                <div class="placeholder">Available for future content</div>
+              </div>
+            </div>
+            
+            <!-- Grid Item 4: Placeholder -->
+            <div class="grid-item">
+              <h2>📅 Weather Forecast</h2>
+              <div class="grid-item-content">
+                <div class="placeholder">Available for future content</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Refresh Indicator -->
+          <div class="refresh-indicator">
+            <span class="refresh-dot"></span>
+            Auto-refresh in <span id="countdown">30</span>s
           </div>
         </body>
       </html>
@@ -134,11 +367,44 @@ app.get('/tides', async (req, res) => {
     res.status(500).send(`
       <!DOCTYPE html>
       <html>
-        <head><title>Error</title></head>
+        <head>
+          <meta charset="UTF-8">
+          <title>Error - Gentle Giants Dashboard</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              margin: 0;
+            }
+            .error-container {
+              background: white;
+              padding: 40px;
+              border-radius: 15px;
+              box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+              text-align: center;
+            }
+            h1 { color: #e74c3c; }
+            a {
+              display: inline-block;
+              margin-top: 20px;
+              padding: 10px 20px;
+              background: #3498db;
+              color: white;
+              text-decoration: none;
+              border-radius: 5px;
+            }
+          </style>
+        </head>
         <body>
-          <h1>Error scraping tide data</h1>
-          <p>${error.message}</p>
-          <a href="/tides">Try again</a>
+          <div class="error-container">
+            <h1>⚠️ Error Loading Dashboard</h1>
+            <p>${error.message}</p>
+            <a href="/tides">Retry</a>
+          </div>
         </body>
       </html>
     `);
