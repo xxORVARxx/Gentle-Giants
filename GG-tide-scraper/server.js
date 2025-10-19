@@ -7,34 +7,149 @@ const cheerio = require('cheerio');
 const app = express();
 const PORT = 3000;
 
-// Route to scrape tide data and road conditions
+
+async function f_fetchTideForecastFromWebpage() {
+
+  function f_parseStrToDateObject(_date, _time) {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+    const dateMatch = _date.match(/\d+\s+\w+/);
+    const [day, month] = dateMatch[0].split(' ');
+    const monthIndex = monthNames.findIndex(m => m.startsWith(month));
+
+    const [timeStr, period] = _time.split(' ');
+    let [hours, minutes] = timeStr.split(':').map(Number);
+
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+
+    const year = new Date().getFullYear();
+    const dateObj = new Date(year, monthIndex, parseInt(day), hours, minutes);
+
+    console.log(dateObj);
+    return dateObj;
+  }
+
+  function f_extractInformationFromTodaysTable(_$) {
+    // First, select all the table rows
+    const rows = _$('.tide-header-today.tide-header__card table.tide-day-tides tbody tr');
+    // Create an array to store your tide data
+    const tideDataArr = [];
+
+    // Loop through each row, starting from index 1 to skip the header row
+    rows.each((index, element) => {
+      // Skip the first row (the header with "Tide", "Time", "Height")
+      if (index === 0) 
+        return;
+  
+      // Now we're working with each data row
+      // Use $tide(element) to convert the element into a Cheerio object we can query
+      const row = $tide(element);
+      // Extract the tide type from the first <td>
+      const tideType = row.find('td').eq(0).text().trim();
+      // Extract the time from the <b> tag in the second <td>
+      const time = row.find('td').eq(1).find('b').text().trim();
+      // Extract the date from the <span> tag in the second <td>
+      const date = row.find('td').eq(1).find('span').text().trim();
+      // Extract the height in meters from the <b> tag in the third <td>
+      const heightMeters = row.find('td').eq(2).find('b').text().trim();
+      // Extract the height in feet from the <span> tag in the third <td>
+      const heightFeet = row.find('td').eq(2).find('span').text().trim();
+      
+      const dateObj = f_parseStrToDateObject(date, time);
+
+      // Store this tide information in an object
+      tideDataArr.push({
+        type: tideType,
+        time: dateObj,
+        heightMeters: heightMeters,
+        heightFeet: heightFeet
+      });
+    });
+    return tideDataArr
+  }
+
+  // Fetch the tide forecast webpage
+  const tideResponse = await axios.get('https://www.tide-forecast.com/locations/Husavik-Iceland/tides/latest', {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+  });
+
+  // Load tide HTML into cheerio
+  const $tide = cheerio.load(tideResponse.data);
+
+  const dataArr = f_extractInformationFromTodaysTable($tide);
+  console.log({dataArr});
+
+  const tideHeaderToday = $tide('.tide-header-today.tide-header__card').html();
+  return tideHeaderToday;
+}
+
+
+function f_convertTo24Hour(_timeStr) {
+  function f_reformat(_str) {
+    if( ! _str)
+      return;
+    const [time, modifier] = _str.trim().split(' ');
+    //console.log(time, modifier);
+    if( ! time || ! modifier)
+      return;
+    let [hours, minutes] = time.split(':');
+    //console.log(hours, minutes);
+    if( ! hours || ! minutes)
+      return;
+    if( hours === '12' )
+      hours = '00';
+    if( modifier === 'PM' )
+      hours = parseInt(hours, 10) + 12;
+    hours = hours.toString()
+    return `${hours.padStart(2, '0')}:${minutes}`;
+  }
+  
+  // Replace all 12-hour times with 24-hour format
+  return _timeStr.replace(/(\d{1,2}:\d{2})\s?(AM|PM)/gi, (match) => {
+    return f_reformat(match);
+  });
+}
+
+
+
+// Sea to scrape tide data and sea conditions
 app.get('/tides', async (req, res) => {
   try {
+    /*
     // Fetch the tide forecast webpage
     const tideResponse = await axios.get('https://www.tide-forecast.com/locations/Husavik-Iceland/tides/latest', {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
+    */
+    /*
+    // Load tide HTML into cheerio
+    const $tide = cheerio.load(tideResponse.data);
+    const tideHeaderToday = f_convertTo24Hour( $tide('.tide-header-today.tide-header__card').html() );
+    //console.log(tideHeaderToday, '\n');
+    */
+    const tideHeaderToday = await f_fetchTideForecastFromWebpage();
+
+
     
-    // Fetch the road conditions webpage
-    const roadResponse = await axios.get('https://www.vegagerdin.is/vs/Today.aspx', {
+    // Fetch the sea conditions webpage
+    const seaResponse = await axios.get('https://www.vegagerdin.is/vs/Today.aspx', {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
     
-    // Load tide HTML into cheerio
-    const $tide = cheerio.load(tideResponse.data);
-    const tideHeaderToday = $tide('.tide-header-today.tide-header__card').html();
-    
-    // Load road conditions HTML into cheerio
-    const $road = cheerio.load(roadResponse.data);
-    const roadImg = $road('#ctl00_ContentPlaceHolder1_imgToday');
-    const roadImgSrc = roadImg.attr('src');
+    // Load sea conditions HTML into cheerio
+    const $sea = cheerio.load(seaResponse.data);
+    const seaImg = $sea('#ctl00_ContentPlaceHolder1_imgToday');
+    const seaImgSrc = seaImg.attr('src');
     
     // Construct full image URL (relative to base URL)
-    const roadImageUrl = roadImgSrc ? `https://www.vegagerdin.is/vs/${roadImgSrc}` : '';
+    const seaImageUrl = seaImgSrc ? `https://www.vegagerdin.is/vs/${seaImgSrc}` : '';
     
     // Send HTML response with the extracted tide data
     res.send(`
@@ -124,119 +239,37 @@ app.get('/tides', async (req, res) => {
             }
             
             /* Tide Data Styling */
+            .tide-data .has-text-centered,
+            .tide-header-today__tide-times,
+            .tide-header-today__table-container img,
+            .tide-day-tides tbody tr:first-child,
+            .tide-day-tides span[class="tide-day-tides__secondary"] {
+              display: none;
+            }
+
             .tide-data {
               flex: 1;
             }
-            
-            /* Custom styling for scraped tide content */
-            .tide-data h3 {
-              font-size: 1.1em;
-              color: #2c3e50;
-              text-align: center;
-              margin-bottom: 15px;
-              font-weight: 600;
-            }
-            
-            .tide-data .tide-header-today__tide-times--nextrow {
-              display: block;
-              margin-top: 5px;
-            }
-            
-            .tide-data table {
+
+            .tide-data table,
+            .tide-data tbody {
               width: 100%;
-              border-collapse: separate;
-              border-spacing: 0;
-              margin: 10px 0;
+            }
+
+            .tide-data tr {
+              width: 100%;
+              display: flex;
+              flex-wrap: nowrap;
+              justify-content: space-between;
+            }
+
+            .tide-data tr > td {
+              font-size: 2em;
+              min-width: 31%;
             }
             
-            .tide-data table th {
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-              padding: 12px 8px;
-              text-align: left;
-              font-weight: 600;
-              font-size: 0.95em;
-              border: none;
-            }
-            
-            .tide-data table th:first-child {
-              border-radius: 8px 0 0 0;
-            }
-            
-            .tide-data table th:last-child {
-              border-radius: 0 8px 0 0;
-            }
-            
-            .tide-data table td {
-              padding: 12px 8px;
-              border-bottom: 1px solid #e0e0e0;
-              font-size: 0.95em;
-            }
-            
-            .tide-data table tr:last-child td {
-              border-bottom: none;
-            }
-            
-            .tide-data table tr:nth-child(even) {
-              background-color: #f8f9fa;
-            }
-            
-            .tide-data table tr:hover {
-              background-color: #e8f4f8;
-              transition: background-color 0.2s;
-            }
-            
-            .tide-data table td:first-child {
-              font-weight: 600;
-              color: #1e3c72;
-            }
-            
-            .tide-data table b {
-              color: #2c3e50;
-              font-size: 1.05em;
-            }
-            
-            .tide-day-tides__secondary {
-              color: #7f8c8d;
-              font-size: 0.85em;
-              display: block;
-              margin-top: 2px;
-            }
-            
-            .tide-day-tides__sub-header {
-              display: block;
-              font-size: 0.8em;
-              font-weight: 400;
-              opacity: 0.9;
-            }
-            
-            .tide-day-tides__icon {
-              vertical-align: middle;
-              margin-left: 5px;
-            }
-            
-            .tide-header-today__datum {
-              margin-top: 15px;
-              padding: 10px;
-              background: #e8f4f8;
-              border-radius: 6px;
-              font-size: 0.85em;
-            }
-            
-            .tide-header-today__datum-source {
-              color: #34495e;
-            }
-            
-            .tide-header-today__datum-source b {
-              color: #1e3c72;
-            }
-            
-            .not-in-print {
-              display: block;
-            }
-            
-            /* Road Conditions Image */
-            .road-image {
+            /* sea Conditions Image */
+            .sea-image {
               width: 100%;
               height: 100%;
               object-fit: contain;
@@ -281,6 +314,7 @@ app.get('/tides', async (req, res) => {
               50% { opacity: 0.3; }
             }
           </style>
+
           <script>
             // Update clock every second
             function updateClock() {
@@ -310,6 +344,7 @@ app.get('/tides', async (req, res) => {
               setInterval(updateCountdown, 1000);
             });
           </script>
+
         </head>
         <body>
           <!-- Title Bar -->
@@ -334,7 +369,7 @@ app.get('/tides', async (req, res) => {
             <div class="grid-item">
               <h2>🚤 Iceland Sea Conditions</h2>
               <div class="grid-item-content">
-                ${roadImageUrl ? `<img src="${roadImageUrl}" alt="Iceland Sea Conditions" class="road-image">` : '<div class="placeholder">Sea conditions image not available</div>'}
+                ${seaImageUrl ? `<img src="${seaImageUrl}" alt="Iceland Sea Conditions" class="sea-image">` : '<div class="placeholder">Sea conditions image not available</div>'}
               </div>
             </div>
             
