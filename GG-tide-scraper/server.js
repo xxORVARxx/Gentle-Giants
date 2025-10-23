@@ -8,25 +8,25 @@ const app = express();
 const PORT = 3000;
 
 
+
 async function f_fetchTideForecastFromWebpage() {
 
-  function f_parseStrToDateObject(_date, _time) {
+  function f_parseStrToDateObject(_dateStr, _timeStr) {
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-    const dateMatch = _date.match(/\d+\s+\w+/);
+    const dateMatch = _dateStr.match(/\d+\s+\w+/);
     const [day, month] = dateMatch[0].split(' ');
     const monthIndex = monthNames.findIndex(m => m.startsWith(month));
 
-    const [timeStr, period] = _time.split(' ');
+    const [timeStr, period] = _timeStr.split(' ');
     let [hours, minutes] = timeStr.split(':').map(Number);
 
     if (period === 'PM' && hours !== 12) hours += 12;
     if (period === 'AM' && hours === 12) hours = 0;
 
     const year = new Date().getFullYear();
-    const dateObj = new Date(year, monthIndex, parseInt(day), hours, minutes);
-
-    console.log(dateObj);
+    const randomSeconds = Math.floor(Math.random() * 59) + 1; // 1 to 59
+    const dateObj = new Date(year, monthIndex, parseInt(day), hours, minutes, randomSeconds);
     return dateObj;
   }
 
@@ -69,73 +69,97 @@ async function f_fetchTideForecastFromWebpage() {
     return tideDataArr
   }
 
+  //-- START HERE -- f_fetchTideForecastFromWebpage()
   // Fetch the tide forecast webpage
   const tideResponse = await axios.get('https://www.tide-forecast.com/locations/Husavik-Iceland/tides/latest', {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
   });
-
   // Load tide HTML into cheerio
   const $tide = cheerio.load(tideResponse.data);
-
   const dataArr = f_extractInformationFromTodaysTable($tide);
-  console.log({dataArr});
-
-  const tideHeaderToday = $tide('.tide-header-today.tide-header__card').html();
-  return tideHeaderToday;
+  //const tideHeaderToday = $tide('.tide-header-today.tide-header__card').html();
+  //console.log({dataArr});
+  return dataArr;
 }
 
-
-function f_convertTo24Hour(_timeStr) {
-  function f_reformat(_str) {
-    if( ! _str)
-      return;
-    const [time, modifier] = _str.trim().split(' ');
-    //console.log(time, modifier);
-    if( ! time || ! modifier)
-      return;
-    let [hours, minutes] = time.split(':');
-    //console.log(hours, minutes);
-    if( ! hours || ! minutes)
-      return;
-    if( hours === '12' )
-      hours = '00';
-    if( modifier === 'PM' )
-      hours = parseInt(hours, 10) + 12;
-    hours = hours.toString()
-    return `${hours.padStart(2, '0')}:${minutes}`;
-  }
+function f_generateHtmlForTideHeader(_tideDataArr) {
+  const $ = cheerio.load('<table><tbody></tbody></table>');
+  const tbody = $('tbody');
+  tbody.empty();
   
-  // Replace all 12-hour times with 24-hour format
-  return _timeStr.replace(/(\d{1,2}:\d{2})\s?(AM|PM)/gi, (match) => {
-    return f_reformat(match);
+  const now = new Date();
+  let upcomingIndex = -1;
+  let minDiff = Infinity;
+  
+  // Find the upcoming tide (closest future time)
+  _tideDataArr.forEach((tide, index) => {
+    const target = new Date(tide.time);
+    const diff = target - now;
+    if (diff > 0 && diff < minDiff) {
+      minDiff = diff;
+      upcomingIndex = index;
+    }
   });
+  
+  _tideDataArr.forEach((tide, index) => {
+    const date = tide.time;
+    const formattedTime = date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'UTC'
+    });
+    
+    const typeClass = tide.type === 'Low Tide' ? 'low-tide' : 'high-tide';
+    const countdown = "-00h 00m 00s" //getTimeUntil(tide.time); <-- Do this on the client side.
+    const flipClass = tide.type === 'Low Tide' ? 'flip' : '';
+    const upcomingClass = index === upcomingIndex ? ' class="upcoming"' : '';
+    
+    const svgIcon = `<svg class="tide-icon ${flipClass}" viewBox="0 0 1655 1400" xmlns="http://www.w3.org/2000/svg">
+      <path fill="none" stroke="currentColor" paint-order="fill stroke markers"
+        d="m 116,579.59554 c 38.13302,47.90001 82.94363,101.5178 147,111.55678 60.00231,7.26867 110.08855,-36.87914 147,-78.70027 112.23365,-131.50886 177.17119,-296.36523 291,-426.66211 36.8065,-40.85344 88.19512,-82.56078 147,-72.16872 64.42337,13.37411 108.56897,68.36823 147,117.57911 93.5,124.77079 156.8784,270.42566 260,388.19102 36.793,40.66019 88.4615,81.82413 147,70.79434 58.8337,-12.21781 101.0236,-61.18811 137,-105.73173"
+        stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-width="150"/>
+    </svg>`;
+    
+    const rowHtml = `
+      <tr${upcomingClass}>
+        <td> </td>
+        <td class="${typeClass}">${svgIcon}<strong>${tide.type}</strong></td>
+        <td>${formattedTime}<span class="countdown" data-index="${index}">${countdown}</span></td>
+        <td>${tide.heightMeters}<span class="height-feet">${tide.heightFeet}</span></td>
+      </tr>`;
+    
+    tbody.append(rowHtml);
+  });
+  
+  return $('table').html(); // Returns the innerHTML of the table
 }
 
 
 
 // Sea to scrape tide data and sea conditions
 app.get('/tides', async (req, res) => {
+
+  let tideDataToday;
+  let tideHeaderToday;
   try {
-    /*
-    // Fetch the tide forecast webpage
-    const tideResponse = await axios.get('https://www.tide-forecast.com/locations/Husavik-Iceland/tides/latest', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-    */
-    /*
-    // Load tide HTML into cheerio
-    const $tide = cheerio.load(tideResponse.data);
-    const tideHeaderToday = f_convertTo24Hour( $tide('.tide-header-today.tide-header__card').html() );
-    //console.log(tideHeaderToday, '\n');
-    */
-    const tideHeaderToday = await f_fetchTideForecastFromWebpage();
+    tideDataToday = await f_fetchTideForecastFromWebpage();
+    tideHeaderToday = f_generateHtmlForTideHeader(tideDataToday);
+  } catch (error) {
+    console.error({error});
+    tideHeaderToday = `
+      <div class="error-container">
+        <h1>⚠️ Error Loading Dashboard</h1>
+        <p>${error.message}</p>
+        <a href="/tides">Retry</a>
+      </div>`;
+  }
 
+  console.log("tideDataToday: ", tideDataToday);
 
-    
+  try {
     // Fetch the sea conditions webpage
     const seaResponse = await axios.get('https://www.vegagerdin.is/vs/Today.aspx', {
       headers: {
@@ -174,7 +198,10 @@ app.get('/tides', async (req, res) => {
               display: flex;
               flex-direction: column;
             }
-            
+
+          
+
+
             /* Title Bar */
             .title-bar {
               background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
@@ -201,6 +228,8 @@ app.get('/tides', async (req, res) => {
               text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
             }
             
+
+
             /* Grid Container */
             .grid-container {
               display: grid;
@@ -237,37 +266,88 @@ app.get('/tides', async (req, res) => {
               display: flex;
               flex-direction: column;
             }
+
+
             
             /* Tide Data Styling */
-            .tide-data .has-text-centered,
-            .tide-header-today__tide-times,
-            .tide-header-today__table-container img,
-            .tide-day-tides tbody tr:first-child,
-            .tide-day-tides span[class="tide-day-tides__secondary"] {
-              display: none;
+            .text {
+              margin-left: 33%;
+              color: #202020ff;
+              font-size: 1em;
+              padding-bottom: 10px;
+              flex-shrink: 0;
             }
 
-            .tide-data {
-              flex: 1;
+            table {
+                width: 100%;
+                height: auto;
+                font-size: 1.2em;
+                border-collapse: collapse;
+                background-color: white;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
 
-            .tide-data table,
-            .tide-data tbody {
-              width: 100%;
+            td {
+                padding: 12px;
+                border-top: 1px solid #ddd;
+                /*text-align: center;*/
+                /*width: 33.33%;*/
             }
 
-            .tide-data tr {
-              width: 100%;
-              display: flex;
-              flex-wrap: nowrap;
-              justify-content: space-between;
+            .tide-icon {
+                width: 30px;
+                height: 25px;
+                display: inline-block;
+                vertical-align: middle;
+                margin-right: 8px;
             }
 
-            .tide-data tr > td {
-              font-size: 2em;
-              min-width: 31%;
+            .tide-icon.flip {
+                transform: scaleY(-1);
+            }
+
+            tr.upcoming {
+                background-color: #ffffcc;
+                font-weight: bold;
+            }
+
+           .low-tide,
+           .high-tide {
+                color: #1e3c72;
+            }
+
+            .height-feet,
+            .countdown {
+                font-style: italic;
+                color: #999;
+                margin-left: 5px;
+                font-size: 0.9em;
+            }
+
+            /* Tide Data Styling - ERROR */
+            .error-container {
+              font-family: Arial, sans-serif;
+              background: white;
+              padding: 40px;
+              text-align: center;
+            }
+
+            .error-container h1 { 
+              color: #e74c3c;
+            }
+
+            .error-container a {
+              display: inline-block;
+              margin-top: 20px;
+              padding: 10px 20px;
+              background: #3498db;
+              color: white;
+              text-decoration: none;
+              border-radius: 5px;
             }
             
+
+
             /* sea Conditions Image */
             .sea-image {
               width: 100%;
@@ -285,6 +365,8 @@ app.get('/tides', async (req, res) => {
               font-size: 1.2em;
               flex: 1;
             }
+
+
             
             /* Auto refresh indicator */
             .refresh-indicator {
@@ -326,7 +408,7 @@ app.get('/tides', async (req, res) => {
             }
             
             // Update countdown
-            let seconds = 30;
+            let seconds = 630;
             function updateCountdown() {
               seconds--;
               if (seconds >= 0) {
@@ -336,12 +418,43 @@ app.get('/tides', async (req, res) => {
                 location.reload();
               }
             }
+
+            // Tide Forecast
+            function tideCalculateTimeUntil() {
+              const data = ${JSON.stringify(tideDataToday)};
+              data.forEach((tide, index) => {
+                let str;
+                const now = new Date();
+                const target = new Date(tide.time);
+                const diff = target - now;
+                //console.log(tide.time, target);
+                if (diff < 0) {
+                  const absDiff = Math.abs(diff);
+                  const hours = Math.floor(absDiff / (1000 * 60 * 60));
+                  const minutes = Math.floor((absDiff % (1000 * 60 * 60)) / (1000 * 60));
+                  const seconds = Math.floor((absDiff % (1000 * 60)) / 1000);
+                  str = \`+\${hours}h \${minutes}m \${seconds}s\`;
+                } else {
+                  const hours = Math.floor(diff / (1000 * 60 * 60));
+                  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                  str = \`-\${hours}h \${minutes}m \${seconds}s\`;
+                }
+                const tag = document.querySelector(\`span[data-index="\${index}"]\`);
+                if (tag) {
+                  tag.textContent = str;
+                }
+              });
+            }
+            
+
             
             // Initialize on page load
             window.addEventListener('DOMContentLoaded', () => {
               updateClock();
               setInterval(updateClock, 1000);
               setInterval(updateCountdown, 1000);
+              setInterval(tideCalculateTimeUntil, 1000)
             });
           </script>
 
@@ -359,9 +472,13 @@ app.get('/tides', async (req, res) => {
             <div class="grid-item">
               <h2>🌊 Húsavík Tide Forecast</h2>
               <div class="grid-item-content">
-                <div class="tide-data">
+
+                <span class="text">Today:</span>
+
+                <table class="tide-data">
                   ${tideHeaderToday || '<div class="placeholder">No tide data available</div>'}
-                </div>
+                </table>
+
               </div>
             </div>
             
