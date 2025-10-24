@@ -105,7 +105,8 @@ function f_generateHtmlForTideHeader(_tideDataArr) {
   
   _tideDataArr.forEach((tide, index) => {
     const date = tide.time;
-    const formattedTime = date.toLocaleTimeString('en-US', {
+    const timeStr = date.toISOString()
+    const formattedTimeStr = date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
@@ -113,7 +114,6 @@ function f_generateHtmlForTideHeader(_tideDataArr) {
     });
     
     const typeClass = tide.type === 'Low Tide' ? 'low-tide' : 'high-tide';
-    const countdown = "-00h 00m 00s" //getTimeUntil(tide.time); <-- Do this on the client side.
     const flipClass = tide.type === 'Low Tide' ? 'flip' : '';
     const upcomingClass = index === upcomingIndex ? ' class="upcoming"' : '';
     
@@ -124,10 +124,10 @@ function f_generateHtmlForTideHeader(_tideDataArr) {
     </svg>`;
     
     const rowHtml = `
-      <tr${upcomingClass}>
-        <td> </td>
+      <tr${upcomingClass} data-index="${index}">
+        <td class="spacer"></td>
         <td class="${typeClass}">${svgIcon}<strong>${tide.type}</strong></td>
-        <td>${formattedTime}<span class="countdown" data-index="${index}">${countdown}</span></td>
+        <td>${formattedTimeStr}<span class="countdown" data-countdown="${timeStr}">-00h 00m 00s</span></td>
         <td>${tide.heightMeters}<span class="height-feet">${tide.heightFeet}</span></td>
       </tr>`;
     
@@ -142,11 +142,11 @@ function f_generateHtmlForTideHeader(_tideDataArr) {
 // Sea to scrape tide data and sea conditions
 app.get('/tides', async (req, res) => {
 
-  let tideDataToday;
   let tideHeaderToday;
   try {
-    tideDataToday = await f_fetchTideForecastFromWebpage();
+    const tideDataToday = await f_fetchTideForecastFromWebpage();
     tideHeaderToday = f_generateHtmlForTideHeader(tideDataToday);
+    //console.log("tideDataToday: ", tideDataToday);
   } catch (error) {
     console.error({error});
     tideHeaderToday = `
@@ -157,8 +157,7 @@ app.get('/tides', async (req, res) => {
       </div>`;
   }
 
-  console.log("tideDataToday: ", tideDataToday);
-
+  let seaImageUrl;
   try {
     // Fetch the sea conditions webpage
     const seaResponse = await axios.get('https://www.vegagerdin.is/vs/Today.aspx', {
@@ -166,15 +165,18 @@ app.get('/tides', async (req, res) => {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
-    
     // Load sea conditions HTML into cheerio
     const $sea = cheerio.load(seaResponse.data);
     const seaImg = $sea('#ctl00_ContentPlaceHolder1_imgToday');
     const seaImgSrc = seaImg.attr('src');
-    
     // Construct full image URL (relative to base URL)
-    const seaImageUrl = seaImgSrc ? `https://www.vegagerdin.is/vs/${seaImgSrc}` : '';
-    
+    seaImageUrl = seaImgSrc ? `https://www.vegagerdin.is/vs/${seaImgSrc}` : '';
+  } catch (error) {
+    console.error({error});
+    seaImageUrl = null;
+  }
+
+  try {
     // Send HTML response with the extracted tide data
     res.send(`
       <!DOCTYPE html>
@@ -421,13 +423,12 @@ app.get('/tides', async (req, res) => {
 
             // Tide Forecast
             function tideCalculateTimeUntil() {
-              const data = ${JSON.stringify(tideDataToday)};
-              data.forEach((tide, index) => {
-                let str;
+              const tags = document.querySelectorAll("table.tide-data span.countdown");
+              tags.forEach((tag, index) => {
                 const now = new Date();
-                const target = new Date(tide.time);
+                const target = new Date(tag.getAttribute("data-countdown"));
                 const diff = target - now;
-                //console.log(tide.time, target);
+                let str;
                 if (diff < 0) {
                   const absDiff = Math.abs(diff);
                   const hours = Math.floor(absDiff / (1000 * 60 * 60));
@@ -440,10 +441,7 @@ app.get('/tides', async (req, res) => {
                   const seconds = Math.floor((diff % (1000 * 60)) / 1000);
                   str = \`-\${hours}h \${minutes}m \${seconds}s\`;
                 }
-                const tag = document.querySelector(\`span[data-index="\${index}"]\`);
-                if (tag) {
-                  tag.textContent = str;
-                }
+                tag.textContent = str;
               });
             }
             
